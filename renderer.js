@@ -3,22 +3,55 @@ let appState = {
     entries: [],
     storagePath: localStorage.getItem('sv_storage_path') || '',
     revealedIds: new Set(),
-    searchQuery: ''
+    searchQuery: '',
+    currentView: 'dashboard'
 };
 
 // --- DOM 元素引用 ---
 const dom = {
+    // 视图
+    views: {
+        dashboard: document.getElementById('view-dashboard'),
+        generator: document.getElementById('view-generator')
+    },
+    nav: {
+        dashboard: document.getElementById('nav-dashboard'),
+        generator: document.getElementById('nav-generator'),
+        settings: document.getElementById('nav-settings')
+    },
+    // Dashboard 元素
     list: document.getElementById('password-list'),
     totalCount: document.getElementById('total-count'),
     emptyState: document.getElementById('empty-state'),
     statusText: document.getElementById('status-text'),
     pathDisplay: document.getElementById('storage-path-display'),
     searchInput: document.getElementById('search-input'),
+    headerTitle: document.getElementById('header-title'),
+    headerSearch: document.getElementById('header-search-container'),
+    btnAdd: document.getElementById('btn-add'),
+    
+    // 模态框
     entryForm: document.getElementById('entry-form'),
     modals: {
         entry: document.getElementById('modal-entry'),
         settings: document.getElementById('modal-settings')
-    }
+    },
+    
+    // 生成器元素
+    gen: {
+        result: document.getElementById('gen-result'),
+        lengthSlider: document.getElementById('gen-length'),
+        lengthVal: document.getElementById('gen-length-val'),
+        chkUpper: document.getElementById('chk-upper'),
+        chkLower: document.getElementById('chk-lower'),
+        chkNumber: document.getElementById('chk-number'),
+        chkSymbol: document.getElementById('chk-symbol'),
+        btnGen: document.getElementById('btn-generate'),
+        btnCopy: document.getElementById('btn-gen-copy')
+    },
+    
+    // 模态框内快速生成
+    btnQuickGen: document.getElementById('btn-quick-gen')
 };
 
 // --- 初始化 ---
@@ -38,6 +71,9 @@ async function init() {
 
     bindEvents();
     renderTable();
+    
+    // 初始生成一个密码供展示
+    runGenerator();
 }
 
 // --- 事件绑定 ---
@@ -46,9 +82,13 @@ function bindEvents() {
     document.getElementById('btn-close').addEventListener('click', () => window.electronAPI.close());
     document.getElementById('btn-min').addEventListener('click', () => window.electronAPI.minimize());
 
-    // 导航
-    document.getElementById('nav-settings').addEventListener('click', () => openModal('settings'));
-    document.getElementById('btn-add').addEventListener('click', () => {
+    // 导航切换
+    dom.nav.dashboard.addEventListener('click', () => switchView('dashboard'));
+    dom.nav.generator.addEventListener('click', () => switchView('generator'));
+    dom.nav.settings.addEventListener('click', () => openModal('settings'));
+
+    // Dashboard 操作
+    dom.btnAdd.addEventListener('click', () => {
         resetEntryForm();
         openModal('entry');
     });
@@ -77,9 +117,107 @@ function bindEvents() {
         appState.searchQuery = e.target.value.toLowerCase();
         renderTable();
     });
+
+    // --- 生成器事件 ---
+    dom.gen.lengthSlider.addEventListener('input', (e) => {
+        dom.gen.lengthVal.textContent = e.target.value;
+        runGenerator();
+    });
+    [dom.gen.chkUpper, dom.gen.chkLower, dom.gen.chkNumber, dom.gen.chkSymbol].forEach(chk => {
+        chk.addEventListener('change', runGenerator);
+    });
+    dom.gen.btnGen.addEventListener('click', runGenerator);
+    dom.gen.btnCopy.addEventListener('click', () => {
+        navigator.clipboard.writeText(dom.gen.result.textContent);
+        showToast('密码已复制', 'success');
+    });
+
+    // 模态框内快速生成
+    dom.btnQuickGen.addEventListener('click', () => {
+        // 快速生成默认: 长度20, 包含所有字符
+        const pwd = generatePassword(20, { upper: true, lower: true, number: true, symbol: true });
+        document.getElementById('password').value = pwd;
+        // 添加一个微小的闪烁效果
+        const input = document.getElementById('password');
+        input.classList.add('bg-blue-900/30');
+        setTimeout(() => input.classList.remove('bg-blue-900/30'), 200);
+    });
 }
 
-// --- 核心逻辑 ---
+// --- 视图切换逻辑 ---
+function switchView(viewName) {
+    appState.currentView = viewName;
+    
+    // 隐藏所有视图
+    Object.values(dom.views).forEach(el => el.classList.add('hidden'));
+    // 显示目标视图
+    dom.views[viewName].classList.remove('hidden');
+
+    // 更新侧边栏状态
+    const activeClass = 'bg-blue-600/10 text-blue-400';
+    const inactiveClass = 'text-slate-400 hover:bg-slate-800 hover:text-slate-200';
+    
+    dom.nav.dashboard.className = `flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors nav-item ${viewName === 'dashboard' ? activeClass : inactiveClass}`;
+    dom.nav.generator.className = `flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer transition-colors nav-item ${viewName === 'generator' ? activeClass : inactiveClass}`;
+
+    // 更新 Header (不同视图 Header 内容不同)
+    if (viewName === 'generator') {
+        dom.headerTitle.textContent = '强密码生成器';
+        dom.headerSearch.style.visibility = 'hidden';
+        dom.btnAdd.style.visibility = 'hidden';
+    } else {
+        dom.headerTitle.textContent = '密码库';
+        dom.headerSearch.style.visibility = 'visible';
+        dom.btnAdd.style.visibility = 'visible';
+    }
+}
+
+// --- 密码生成核心逻辑 ---
+function generatePassword(length, options) {
+    const chars = {
+        upper: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+        lower: 'abcdefghijklmnopqrstuvwxyz',
+        number: '0123456789',
+        symbol: '!@#$%^&*()_+~`|}{[]:;?><,./-='
+    };
+
+    let charset = '';
+    if (options.upper) charset += chars.upper;
+    if (options.lower) charset += chars.lower;
+    if (options.number) charset += chars.number;
+    if (options.symbol) charset += chars.symbol;
+
+    if (charset === '') return ''; // 防止都没选
+
+    let password = '';
+    const array = new Uint32Array(length);
+    window.crypto.getRandomValues(array);
+
+    for (let i = 0; i < length; i++) {
+        password += charset[array[i] % charset.length];
+    }
+    return password;
+}
+
+function runGenerator() {
+    const length = parseInt(dom.gen.lengthSlider.value);
+    const options = {
+        upper: dom.gen.chkUpper.checked,
+        lower: dom.gen.chkLower.checked,
+        number: dom.gen.chkNumber.checked,
+        symbol: dom.gen.chkSymbol.checked
+    };
+
+    if (!options.upper && !options.lower && !options.number && !options.symbol) {
+        dom.gen.result.textContent = "请至少选择一种字符";
+        return;
+    }
+
+    const pwd = generatePassword(length, options);
+    dom.gen.result.textContent = pwd;
+}
+
+// --- 数据与文件操作 ---
 
 async function loadDataFromDisk() {
     updateStatusDisplay('loading', '读取中...');
@@ -157,7 +295,6 @@ function renderTable() {
         tr.className = 'hover:bg-slate-800/80 transition-colors group border-b border-slate-800/50';
         
         const isRevealed = appState.revealedIds.has(item.id);
-        // 视觉上的加密效果：如果是隐藏状态，显示哈希样式，否则显示明文
         const displayPwd = isRevealed ? item.password : '●●●●●●●●●●●●';
         const pwdClass = isRevealed ? 'text-green-400 font-mono' : 'text-slate-600 font-sans tracking-widest';
 
@@ -197,13 +334,11 @@ function renderTable() {
         dom.list.appendChild(tr);
     });
 
-    // 绑定动态生成的按钮事件 (Event Delegation)
     lucide.createIcons();
     attachDynamicEvents();
 }
 
 function attachDynamicEvents() {
-    // 提取/解密
     document.querySelectorAll('.btn-reveal').forEach(btn => {
         btn.addEventListener('click', () => {
             const id = parseInt(btn.dataset.id);
@@ -213,7 +348,6 @@ function attachDynamicEvents() {
         });
     });
 
-    // 编辑
     document.querySelectorAll('.btn-edit').forEach(btn => {
         btn.addEventListener('click', () => {
             const item = appState.entries.find(e => e.id === parseInt(btn.dataset.id));
@@ -228,7 +362,6 @@ function attachDynamicEvents() {
         });
     });
 
-    // 删除
     document.querySelectorAll('.btn-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
             if (confirm('确认删除此条目？')) {
@@ -240,7 +373,6 @@ function attachDynamicEvents() {
         });
     });
 
-    // 复制
     document.querySelectorAll('.btn-copy').forEach(btn => {
         btn.addEventListener('click', () => {
             navigator.clipboard.writeText(btn.dataset.pwd);
@@ -255,7 +387,6 @@ function openModal(name) {
     const el = dom.modals[name];
     const content = el.querySelector('div');
     el.classList.remove('hidden');
-    // 需要一点延迟让 display:block 生效后再加 opacity
     requestAnimationFrame(() => {
         el.classList.remove('opacity-0');
         content.classList.remove('scale-95');
