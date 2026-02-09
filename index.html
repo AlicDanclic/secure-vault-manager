@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureVault</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { user-select: none; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .drag-region { -webkit-app-region: drag; }
+        .no-drag { -webkit-app-region: no-drag; }
+        .toast-enter { animation: slideIn 0.3s ease-out forwards; }
+        @keyframes slideIn {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans h-screen flex overflow-hidden selection:bg-blue-500 selection:text-white">
+
+    <!-- 侧边栏 -->
+    <aside class="w-64 bg-slate-950 border-r border-slate-800 flex flex-col shrink-0">
+        <!-- 窗口控制区 (Mac 风格红绿灯，绑定了 renderer.js 中的事件) -->
+        <div class="h-10 flex items-center px-4 drag-region">
+            <div class="flex gap-2 group">
+                <div id="btn-close" class="w-3 h-3 rounded-full bg-red-500 hover:bg-red-600 transition-colors cursor-pointer no-drag flex items-center justify-center text-red-900 font-bold text-[8px] opacity-100"></div>
+                <div id="btn-min" class="w-3 h-3 rounded-full bg-yellow-500 hover:bg-yellow-600 transition-colors cursor-pointer no-drag flex items-center justify-center text-yellow-900 font-bold text-[8px] opacity-100"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500 hover:bg-green-600 transition-colors cursor-pointer no-drag opacity-50 cursor-not-allowed"></div>
+            </div>
+        </div>
+
+        <div class="px-6 py-4 flex items-center gap-3 border-b border-slate-800">
+            <div class="p-2 bg-blue-600 rounded-lg shadow-lg shadow-blue-900/20">
+                <i data-lucide="shield" class="w-5 h-5 text-white"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight text-white">SecureVault</h1>
+                <p class="text-xs text-slate-500">v1.1.0 (Local)</p>
+            </div>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+            <div id="nav-all" class="flex items-center gap-3 px-3 py-2 rounded-md bg-blue-600/10 text-blue-400 cursor-pointer transition-colors">
+                <i data-lucide="server" class="w-4 h-4"></i>
+                <span class="text-sm font-medium flex-1">所有项目</span>
+                <span id="total-count" class="text-xs bg-slate-800 px-2 py-0.5 rounded-full text-slate-500">0</span>
+            </div>
+            <div id="nav-settings" class="flex items-center gap-3 px-3 py-2 rounded-md text-slate-400 hover:bg-slate-800 hover:text-slate-200 cursor-pointer transition-colors">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span class="text-sm font-medium flex-1">设置 / 存储路径</span>
+            </div>
+        </nav>
+
+        <div class="p-4 border-t border-slate-800 bg-slate-950">
+            <div class="flex items-center gap-3 p-2 rounded-md hover:bg-slate-900 transition-colors">
+                <div class="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white">A</div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-white truncate">Admin</p>
+                    <p id="status-text" class="text-xs text-yellow-500 truncate">● 正在连接...</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="flex-1 flex flex-col min-w-0 bg-slate-900 relative">
+        <header class="h-16 border-b border-slate-800 flex items-center justify-between px-8 bg-slate-900/50 backdrop-blur-md shrink-0 drag-region">
+            <div class="flex items-center gap-4 flex-1">
+                <h2 class="text-xl font-semibold text-white">密码库</h2>
+                <div class="h-4 w-px bg-slate-700 mx-2"></div>
+                <div class="relative group w-64 no-drag">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4 group-focus-within:text-blue-400 transition-colors"></i>
+                    <input type="text" id="search-input" placeholder="搜索..." class="w-full bg-slate-800 border border-slate-700 text-sm text-slate-200 rounded-md pl-9 pr-4 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder:text-slate-500">
+                </div>
+            </div>
+            <button id="btn-add" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-sm font-medium transition-all shadow-lg shadow-blue-900/20 active:scale-95 no-drag">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                新建
+            </button>
+        </header>
+
+        <div class="flex-1 overflow-auto p-8">
+            <div class="bg-slate-800/50 border border-slate-700 rounded-lg overflow-hidden shadow-sm">
+                <table class="w-full text-left text-sm">
+                    <thead class="bg-slate-800 border-b border-slate-700 sticky top-0 z-10">
+                        <tr>
+                            <th class="px-6 py-4 font-semibold text-slate-300 w-16">#</th>
+                            <th class="px-6 py-4 font-semibold text-slate-300 w-1/4">网站 / 软件</th>
+                            <th class="px-6 py-4 font-semibold text-slate-300 w-1/4">账户名</th>
+                            <th class="px-6 py-4 font-semibold text-slate-300">密码 (加密存储)</th>
+                            <th class="px-6 py-4 font-semibold text-slate-300 w-48 text-right">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="password-list" class="divide-y divide-slate-700/50"></tbody>
+                </table>
+            </div>
+            <div id="empty-state" class="hidden flex-col items-center justify-center py-12 text-slate-500">
+                <p>无数据</p>
+            </div>
+            <div class="mt-4 text-xs text-slate-500 text-center flex justify-center items-center gap-2">
+                <i data-lucide="hard-drive" class="w-3 h-3"></i>
+                <span id="storage-path-display">未配置路径</span>
+            </div>
+        </div>
+
+        <div id="toast-container" class="absolute bottom-4 right-4 flex flex-col gap-2 pointer-events-none"></div>
+    </main>
+
+    <!-- 模态框: 新增/编辑 -->
+    <div id="modal-entry" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[480px] p-6 transform scale-95 transition-transform duration-200" id="modal-entry-content">
+            <h3 class="text-lg font-semibold text-white mb-4" id="modal-title">新建</h3>
+            <form id="entry-form" class="space-y-4">
+                <input type="hidden" id="entry-id">
+                <div>
+                    <label class="text-xs text-slate-400 uppercase">网站</label>
+                    <input type="text" id="site" required class="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 px-3 mt-1 text-slate-200 focus:border-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 uppercase">账户</label>
+                    <input type="text" id="username" required class="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 px-3 mt-1 text-slate-200 focus:border-blue-500 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 uppercase">密码</label>
+                    <input type="text" id="password" required class="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 px-3 mt-1 text-slate-200 font-mono focus:border-blue-500 focus:outline-none">
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" id="btn-cancel-entry" class="px-4 py-2 text-slate-400 hover:text-white">取消</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 模态框: 设置 -->
+    <div id="modal-settings" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 hidden opacity-0 transition-opacity duration-200">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl w-[500px] p-6 transform scale-95 transition-transform duration-200" id="modal-settings-content">
+            <h3 class="text-lg font-semibold text-white mb-4">设置</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-slate-400 uppercase">本地数据文件路径 (.json)</label>
+                    <input type="text" id="settings-path" class="w-full bg-slate-800 border border-slate-700 rounded-lg py-2 px-3 mt-1 text-slate-300 font-mono text-xs focus:border-blue-500 focus:outline-none" placeholder="例如: D:\passwords.json">
+                    <p class="text-[10px] text-slate-500 mt-1">输入绝对路径。修改后将自动创建或读取该文件。</p>
+                </div>
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-800">
+                    <button id="btn-cancel-settings" class="px-4 py-2 text-slate-400 hover:text-white">关闭</button>
+                    <button id="btn-save-settings" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg">确认路径</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入业务逻辑 -->
+    <script src="renderer.js"></script>
+</body>
+</html>
