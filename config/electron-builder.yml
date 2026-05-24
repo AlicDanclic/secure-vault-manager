@@ -1,0 +1,18 @@
+appId: com.securevault.manager
+productName: SecureVault
+directories:
+  output: dist
+files:
+  - out/**
+  - build/**
+  - package.json
+win:
+  target:
+    - portable
+  icon: build/icon.ico
+mac:
+  target: dmg
+  icon: build/icon.icns
+linux:
+  target: AppImage
+  icon: build/icon.png
